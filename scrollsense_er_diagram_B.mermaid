@@ -1,0 +1,207 @@
+%% ScrollSense — Deliverable B.1 ER Diagram (v2)
+%% Cardinality key: ||=exactly one  |o=zero or one  |{=one or more  o{=zero or more
+%% READING NOTE: the symbol placed next to an entity describes THAT entity's
+%% own multiplicity per one instance of the entity on the other end — e.g. in
+%% "AppUser o|--o{ ModerationEvent", the o| next to AppUser means "0..1 AppUser
+%% per ModerationEvent" (each event has at most one human reviewer), and the
+%% o{ next to ModerationEvent means "0..N events per AppUser".
+%%
+%% Mermaid cannot render double-border (weak) / dashed-border (temporal)
+%% entity styling, or an exclusive-arc constraint — see the companion Kind
+%% Register + Legend for those; apply them by hand in the draw.io pass.
+
+erDiagram
+
+  %% ---------- Users (§2.1) ----------
+  AppUser ||--o{ HandleChangeEvent        : changes_handle
+  AppUser ||--o{ UserDeclaredInterest     : declares
+  Category ||--o{ UserDeclaredInterest    : declared_via
+  AppUser ||--o{ InferredInterest         : inferred_for
+  Category ||--o{ InferredInterest        : inferred_via
+  AppUser ||--o{ InterestSuppression      : suppresses
+  Category ||--o{ InterestSuppression     : suppressed_via
+  AppUser ||--o{ AccountStatusEvent       : status_changes
+
+  %% ---------- Creators & Content (§2.2) ----------
+  AppUser ||--o{ CreatorTierPeriod        : holds_tier
+  AppUser ||--o{ Video                    : owns
+  Video ||--o{ VideoHashtag               : tagged_with
+  Hashtag ||--o{ VideoHashtag             : tags
+  AudioTrack o|--o{ Video                 : used_by
+  Video o|--o| AudioTrack                 : originates
+  Video ||--|{ ModerationEvent            : moderated_by
+  AppUser o|--o{ ModerationEvent          : reviewed_by_human
+  ClassifierVersion o|--o{ ModerationEvent : classified_by_auto
+
+  %% ---------- Social Graph (§2.3) — now associative entities, not bare reflexive edges ----------
+  AppUser ||--o{ Follow                   : follows_as_follower
+  AppUser ||--o{ Follow                   : followed_as_followee
+  AppUser ||--o{ Block                    : blocks_as_blocker
+  AppUser ||--o{ Block                    : blocked_as_blockee
+  AppUser ||--o{ Mute                     : mutes_as_muter
+  AppUser ||--o{ Mute                     : muted_as_mutee
+
+  %% ---------- Watch Telemetry (§2.4) ----------
+  AppUser ||--o{ Impression               : appears_in
+  Video ||--o{ Impression                 : shown_in
+  Impression ||--o{ ViewSegment           : has_segment
+  AppUser ||--o{ EngagementSignal         : signals
+  Video ||--o{ EngagementSignal           : signaled_on
+  AppUser ||--o{ Like                     : likes
+  Video ||--o{ Like                       : liked_by
+
+  %% ---------- Agent Layer (§2.5) ----------
+  AppUser ||--o{ AgentSession             : opens
+  AgentSession ||--o{ Turn                : contains
+  Turn ||--o{ ToolCall                    : issues
+  ToolCall o|--o{ ToolCall                : nests_under
+  PromptTemplateVersion o|--o{ Turn       : answered_using
+  Turn ||--o| TurnUsage                   : priced_as
+  ModelPricePeriod ||--o{ TurnUsage       : priced_at
+  Turn ||--o| JudgeScore                  : judged_by
+  Turn ||--o| UserRating                  : rated_by
+  Turn ||--o{ Recommendation              : recommends
+  Video ||--o{ Recommendation             : recommended_as
+  Recommendation o|--o{ Impression        : sourced_from
+
+  %% ---------- Entity attribute sketches ----------
+  AppUser {
+    bigint user_id PK
+    string handle
+    string account_state
+  }
+  Category {
+    bigint category_id PK
+    string name
+  }
+  InterestSuppression {
+    bigint user_id FK
+    bigint category_id FK
+    datetime suppressed_at PK
+    datetime unsuppressed_at
+  }
+  CreatorTierPeriod {
+    bigint creator_id FK
+    datetime valid_from PK
+    datetime valid_to
+    string tier
+  }
+  Video {
+    bigint video_id PK
+    bigint owner_id FK
+    bigint audio_track_id FK
+    int duration_ms
+  }
+  Hashtag {
+    bigint hashtag_id PK
+    string text
+  }
+  AudioTrack {
+    bigint track_id PK
+    bigint origin_video_id FK
+  }
+  ModerationEvent {
+    bigint video_id FK
+    datetime decided_at PK
+    string new_state
+    string decided_by_kind
+    bigint reviewer_id FK
+    bigint classifier_version_id FK
+  }
+  ClassifierVersion {
+    bigint classifier_version_id PK
+    string name
+  }
+  Follow {
+    bigint follower_id FK
+    bigint followee_id FK
+    datetime started_at PK
+    datetime ended_at
+    string ended_reason
+  }
+  Block {
+    bigint blocker_id FK
+    bigint blocked_id FK
+    datetime blocked_at PK
+    datetime unblocked_at
+  }
+  Mute {
+    bigint muter_id FK
+    bigint muted_id FK
+    datetime muted_at PK
+    datetime unmuted_at
+  }
+  Impression {
+    bigint user_id FK
+    bigint video_id FK
+    datetime shown_at PK
+    bigint source_recommendation_id FK
+    string ranking_model_version
+  }
+  ViewSegment {
+    bigint impression_id FK
+    int segment_seq PK
+    datetime started_at
+    datetime ended_at
+  }
+  Like {
+    bigint user_id FK
+    bigint video_id FK
+    datetime started_at PK
+    datetime ended_at
+  }
+  EngagementSignal {
+    bigint user_id FK
+    bigint video_id FK
+    string signal_type
+    datetime occurred_at PK
+  }
+  AgentSession {
+    bigint session_id PK
+    bigint user_id FK
+  }
+  Turn {
+    bigint session_id FK
+    int turn_seq PK
+    bigint prompt_template_version_id FK
+  }
+  ToolCall {
+    bigint tool_call_id PK
+    bigint turn_id FK
+    bigint parent_call_id FK
+  }
+  PromptTemplateVersion {
+    bigint prompt_template_version_id PK
+    bigint template_id
+    int version_no
+  }
+  TurnUsage {
+    bigint turn_id PK
+    bigint model_price_period_id FK
+    int input_tokens
+    int output_tokens
+  }
+  ModelPricePeriod {
+    bigint model_price_period_id PK
+    string model_name
+    datetime valid_from
+    datetime valid_to
+    decimal input_rate
+    decimal output_rate
+  }
+  JudgeScore {
+    bigint turn_id PK
+    int helpfulness
+    int groundedness
+    int safety
+  }
+  UserRating {
+    bigint turn_id PK
+    string thumbs
+  }
+  Recommendation {
+    bigint recommendation_id PK
+    bigint turn_id FK
+    int position
+    bigint video_id FK
+  }
